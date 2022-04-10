@@ -1,0 +1,1054 @@
+################# Credit Card Default Prediction ###############
+
+
+library(readxl)
+library(caTools)
+library(stargazer)
+library(caret)
+library(glmnet)
+library(Matrix)
+library(lmvar)
+library(MASS)
+library(boot)
+library(AICcmodavg)
+library(Metrics)
+library(forecast)
+library(gbm)
+library(corrplot)
+library(gets)
+library(mgcv)
+library(smooth)
+library(Mcomp)
+library(greybox)
+library(GGUM)
+library(RcppParallel)
+library(corrplot)
+library(dplyr)
+library(pROC)
+library(rpart)
+library(randomForest)
+library(leaps)
+library(tidymv)
+
+###### We have remove the first column of the database on excel 
+###### Because it is not a numeric variable, and we do not need it for the project
+
+################# Open the data base #################
+default_of_credit_card_clients <- read_excel("Desktop/nhenry/default of credit card clients.xls")
+View(default_of_credit_card_clients)
+
+#install.packages("questionr")
+#default_of_credit_card_clients <- rename.variable(default_of_credit_card_clients, "default payment next month", "default_payment_next_month")
+
+
+################# Descriptive Statistics #################
+
+summary(default_of_credit_card_clients)
+
+# In our data base we have some categorical variables which take more than 2 modalities 
+# We decide to look for their repartition 
+# Due to the fact that it make no sense to interpret statistic for variables which are not continuous
+
+# Dependent variable's distribution
+table(default_of_credit_card_clients$default_payment_next_month)
+
+# EDUCATION variable's distribution
+table(default_of_credit_card_clients$EDUCATION)
+
+# MARRIAGE variable's distribution
+table(default_of_credit_card_clients$MARRIAGE)
+
+# SEX variable's distribution
+table(default_of_credit_card_clients$SEX)
+
+
+
+################# Data base cleaning #################
+
+##### Outliers
+
+
+# We create a boxplot of the data set in order to show outliers as two distinct points 
+boxplot(default_of_credit_card_clients)$out
+
+##### Interpretation
+# As we can see we have lot of outliers, in particular for the following variables :
+# LIMT_BAL
+# BILL-AMT1 to 6
+# PAY_AMT1 to 6
+# However, it is not necessary to remove all outliers, therefore we will look for which outliers we have to remove
+
+##### Find outliers
+
+# Variable LIMIT_BAL
+
+# We look for Q1, Q3, and interquartile range for values of the variable LIMIT_BAL
+Q1_LIMIT_BAL <- quantile(default_of_credit_card_clients$LIMIT_BAL, 0.25) #Quantile 1
+Q3_LIMIT_BAL <- quantile(default_of_credit_card_clients$LIMIT_BAL, 0.75) #Quantile 3
+IQR_LIMIT_BAL <- IQR(default_of_credit_card_clients$LIMIT_BAL) #Interquantile
+
+# In the following, we will process in the same way for numeric variables only
+# Because remove outliers for dummies variables do not make sens 
+
+# Variable BILL_AMT1
+Q1_BILL_AMT1 <- quantile(default_of_credit_card_clients$BILL_AMT1, 0.25) #Quantile 1
+Q3_BILL_AMT1 <- quantile(default_of_credit_card_clients$BILL_AMT1, 0.75) #Quantile 3
+IQR_BILL_AMT1 <- IQR(default_of_credit_card_clients$BILL_AMT1) #Interquantile
+
+#Variable BILL_AMT2
+Q1_BILL_AMT2 <- quantile(default_of_credit_card_clients$BILL_AMT2, 0.25) #Quantile 1
+Q3_BILL_AMT2 <- quantile(default_of_credit_card_clients$BILL_AMT2, 0.75) #Quantile 3
+IQR_BILL_AMT2 <- IQR(default_of_credit_card_clients$BILL_AMT2) #Interquantile
+
+#Variable BILL_AMT3
+Q1_BILL_AMT3 <- quantile(default_of_credit_card_clients$BILL_AMT3, 0.25) #Quantile 1
+Q3_BILL_AMT3 <- quantile(default_of_credit_card_clients$BILL_AMT3, 0.75) #Quantile 3
+IQR_BILL_AMT3 <- IQR(default_of_credit_card_clients$BILL_AMT3) #Interquantile
+
+#Variable BILL_AMT4
+Q1_BILL_AMT4 <- quantile(default_of_credit_card_clients$BILL_AMT4, 0.25) #Quantile 1
+Q3_BILL_AMT4 <- quantile(default_of_credit_card_clients$BILL_AMT4, 0.75) #Quantile 3
+IQR_BILL_AMT4 <- IQR(default_of_credit_card_clients$BILL_AMT4) #Interquantile
+
+#Variable BILL_AMT5
+Q1_BILL_AMT5 <- quantile(default_of_credit_card_clients$BILL_AMT5, 0.25) #Quantile 1
+Q3_BILL_AMT5 <- quantile(default_of_credit_card_clients$BILL_AMT5, 0.75) #Quantile 3
+IQR_BILL_AMT5 <- IQR(default_of_credit_card_clients$BILL_AMT5) #Interquantile
+
+#Variable BILL_AMT6
+Q1_BILL_AMT6 <- quantile(default_of_credit_card_clients$BILL_AMT6, 0.25) #Quantile 1
+Q3_BILL_AMT6 <- quantile(default_of_credit_card_clients$BILL_AMT6, 0.75) #Quantile 3
+IQR_BILL_AMT6 <- IQR(default_of_credit_card_clients$BILL_AMT6) #Interquantile
+
+#Variable PAY_AMT1
+Q1_PAY_AMT1 <- quantile(default_of_credit_card_clients$PAY_AMT1, 0.25) #Quantile 1
+Q3_PAY_AMT1 <- quantile(default_of_credit_card_clients$PAY_AMT1, 0.75) #Quantile 3
+IQR_PAY_AMT1 <- IQR(default_of_credit_card_clients$PAY_AMT1) #Interquantile
+
+#Variable PAY_AMT2
+Q1_PAY_AMT2 <- quantile(default_of_credit_card_clients$PAY_AMT2, 0.25) #Quantile 1
+Q3_PAY_AMT2 <- quantile(default_of_credit_card_clients$PAY_AMT2, 0.75) #Quantile 3
+IQR_PAY_AMT2 <- IQR(default_of_credit_card_clients$PAY_AMT2) #Interquantile
+
+#Variable PAY_AMT3
+Q1_PAY_AMT3 <- quantile(default_of_credit_card_clients$PAY_AMT3, 0.25) #Quantile 1
+Q3_PAY_AMT3 <- quantile(default_of_credit_card_clients$PAY_AMT3, 0.75) #Quantile 3
+IQR_PAY_AMT3 <- IQR(default_of_credit_card_clients$PAY_AMT3) #Interquantile
+
+#Variable PAY_AMT4
+Q1_PAY_AMT4 <- quantile(default_of_credit_card_clients$PAY_AMT4, 0.25) #Quantile 1
+Q3_PAY_AMT4 <- quantile(default_of_credit_card_clients$PAY_AMT4, 0.75) #Quantile 3
+IQR_PAY_AMT4 <- IQR(default_of_credit_card_clients$PAY_AMT4) #Interquantile
+
+#Variable PAY_AMT5
+Q1_PAY_AMT5 <- quantile(default_of_credit_card_clients$PAY_AMT5, 0.25) #Quantile 1
+Q3_PAY_AMT5 <- quantile(default_of_credit_card_clients$PAY_AMT5, 0.75) #Quantile 3
+IQR_PAY_AMT5 <- IQR(default_of_credit_card_clients$PAY_AMT5) #Interquantile
+
+#Variable PAY_AMT6
+Q1_PAY_AMT6 <- quantile(default_of_credit_card_clients$PAY_AMT6, 0.25) #Quantile 1
+Q3_PAY_AMT6 <- quantile(default_of_credit_card_clients$PAY_AMT6, 0.75) #Quantile 3
+IQR_PAY_AMT6 <- IQR(default_of_credit_card_clients$PAY_AMT6) #Interquantile
+
+
+#Our database without outliers
+no_outliers <- subset(default_of_credit_card_clients, 
+                      default_of_credit_card_clients$LIMIT_BAL> (Q1_LIMIT_BAL - 1.5*IQR_LIMIT_BAL) & default_of_credit_card_clients$LIMIT_BAL< (Q3_LIMIT_BAL + 1.5*IQR_LIMIT_BAL),
+                      
+                      default_of_credit_card_clients$BILL_AMT1> (Q1_BILL_AMT1 - 1.5*IQR_BILL_AMT1) & default_of_credit_card_clients$BILL_AMT1< (Q3_BILL_AMT1 + 1.5*IQR_BILL_AMT1),
+                      default_of_credit_card_clients$BILL_AMT2> (Q1_BILL_AMT2 - 1.5*IQR_BILL_AMT2) & default_of_credit_card_clients$BILL_AMT2< (Q3_BILL_AMT2 + 1.5*IQR_BILL_AMT2),
+                      default_of_credit_card_clients$BILL_AMT3> (Q1_BILL_AMT3 - 1.5*IQR_BILL_AMT3) & default_of_credit_card_clients$BILL_AMT3< (Q3_BILL_AMT3 + 1.5*IQR_BILL_AMT3),
+                      default_of_credit_card_clients$BILL_AMT4> (Q1_BILL_AMT4 - 1.5*IQR_BILL_AMT4) & default_of_credit_card_clients$BILL_AMT4< (Q3_BILL_AMT4 + 1.5*IQR_BILL_AMT4),
+                      default_of_credit_card_clients$BILL_AMT5> (Q1_BILL_AMT5 - 1.5*IQR_BILL_AMT5) & default_of_credit_card_clients$BILL_AMT5< (Q3_BILL_AMT5 + 1.5*IQR_BILL_AMT5),
+                      default_of_credit_card_clients$BILL_AMT6> (Q1_BILL_AMT6 - 1.5*IQR_BILL_AMT6) & default_of_credit_card_clients$BILL_AMT6< (Q3_BILL_AMT6 + 1.5*IQR_BILL_AMT6),
+                      default_of_credit_card_clients$PAY_AMT1> (Q1_PAY_AMT1 - 1.5*IQR_PAY_AMT1) & default_of_credit_card_clients$PAY_AMT1< (Q3_PAY_AMT1 + 1.5*IQR_PAY_AMT1),
+                      default_of_credit_card_clients$PAY_AMT2> (Q1_PAY_AMT2 - 1.5*IQR_PAY_AMT2) & default_of_credit_card_clients$PAY_AMT2< (Q3_PAY_AMT2 + 1.5*IQR_PAY_AMT2),
+                      default_of_credit_card_clients$PAY_AMT3> (Q1_PAY_AMT3 - 1.5*IQR_PAY_AMT3) & default_of_credit_card_clients$PAY_AMT3< (Q3_PAY_AMT3 + 1.5*IQR_PAY_AMT3),
+                      default_of_credit_card_clients$PAY_AMT4> (Q1_PAY_AMT4 - 1.5*IQR_PAY_AMT4) & default_of_credit_card_clients$PAY_AMT4< (Q3_PAY_AMT4 + 1.5*IQR_PAY_AMT4),
+                      default_of_credit_card_clients$PAY_AMT5> (Q1_PAY_AMT5 - 1.5*IQR_PAY_AMT5) & default_of_credit_card_clients$PAY_AMT5< (Q3_PAY_AMT5 + 1.5*IQR_PAY_AMT5),
+                      default_of_credit_card_clients$PAY_AMT6> (Q1_PAY_AMT6 - 1.5*IQR_PAY_AMT6) & default_of_credit_card_clients$PAY_AMT6< (Q3_PAY_AMT6 + 1.5*IQR_PAY_AMT6),
+                      select=c(LIMIT_BAL, SEX, EDUCATION, MARRIAGE, AGE, PAY_0, PAY_2, PAY_3, PAY_4, PAY_5,PAY_6, BILL_AMT1, BILL_AMT2, BILL_AMT3, BILL_AMT4, BILL_AMT5, BILL_AMT6, PAY_AMT1, PAY_AMT2, PAY_AMT3, PAY_AMT4, PAY_AMT5, PAY_AMT6, default_payment_next_month))
+
+#Originally, our database contains 30 000 variables, now it includes 29833 variables it means that we have remove 167 outliers. 
+
+
+################# Parametric Econometrics #################
+
+# Train and Test Sample
+
+# We define a train and a test sample in order to have an accurate measure of the prediction of our models
+
+# We split our observations by using the following ratio :
+#70% for train sample 
+# 30% for test sample 
+no_outliers=as.data.frame(no_outliers)
+set.seed(123)
+no_outliers_split = sample.split(no_outliers, SplitRatio = 0.7)
+
+#subsetting into Train data
+train =subset(no_outliers, no_outliers_split==TRUE)
+
+#subsetting into Test data
+test =subset(no_outliers, no_outliers_split==FALSE)
+
+
+
+
+###### In order to observe what is the impact of our explanatory variables we first made an OLS regression
+##### We use this technique because it is the simplest to analyze 
+
+##### OLS Regression
+OLS <- lm(default_payment_next_month ~ LIMIT_BAL + SEX + EDUCATION + MARRIAGE + AGE + PAY_0 + PAY_2 + PAY_3+ PAY_4 +PAY_5+ PAY_6 + BILL_AMT1+ BILL_AMT2+ BILL_AMT3 + BILL_AMT4+ BILL_AMT5+ BILL_AMT6+ PAY_AMT1+ PAY_AMT2+ PAY_AMT3+PAY_AMT4+PAY_AMT5+PAY_AMT6, 
+            data = train, y=TRUE, x=TRUE)
+OLS
+stargazer(OLS)
+
+
+# Adressing multicollinearity in OLS 
+
+# Due to the presence of multicollinearity come from BILL_AMT variable
+# We remove it and reestimate OLS regression
+
+OLS_mul <- lm(default_payment_next_month ~ LIMIT_BAL + SEX + EDUCATION + MARRIAGE + AGE + PAY_0 + PAY_2 + PAY_3+ PAY_4 +PAY_5+ PAY_6 + PAY_AMT1+ PAY_AMT2+ PAY_AMT3+PAY_AMT4+PAY_AMT5+PAY_AMT6, 
+          data = train, y=TRUE, x=TRUE)
+OLS_mul
+stargazer(OLS_mul)
+
+
+#Since our dependent variable is binary we decide to implement other kind of models 
+# Which will better fit with it 
+
+# Probit regression 
+
+Probit <- glm(default_payment_next_month ~ LIMIT_BAL + SEX + EDUCATION + MARRIAGE + AGE + PAY_0 + PAY_2 + PAY_3+ PAY_4 +PAY_5+ PAY_6 + BILL_AMT1+ BILL_AMT2+ BILL_AMT3 + BILL_AMT4+ BILL_AMT5+ BILL_AMT6+ PAY_AMT1+ PAY_AMT2+ PAY_AMT3+PAY_AMT4+PAY_AMT5+PAY_AMT6, family = binomial(link = "probit"), 
+                data = train)
+Probit
+stargazer(Probit)
+
+
+#Logit regression 
+
+Logit <-glm(default_payment_next_month ~ LIMIT_BAL + SEX + EDUCATION + MARRIAGE + AGE + PAY_0 + PAY_2 + PAY_3+ PAY_4 +PAY_5+ PAY_6 + BILL_AMT1+ BILL_AMT2+ BILL_AMT3 + BILL_AMT4+ BILL_AMT5+ BILL_AMT6+ PAY_AMT1+ PAY_AMT2+ PAY_AMT3+PAY_AMT4+PAY_AMT5+PAY_AMT6, ,data = train, family = "binomial") 
+              
+Logit
+stargazer(Logit)
+
+#Logit regression with interaction
+
+
+
+# Create the interaction variable between education and sex
+
+
+
+educ_sex <- EDUCATION*SEX
+
+Logit_inter <-glm(default_payment_next_month ~ LIMIT_BAL + SEX + EDUCATION + MARRIAGE + AGE + PAY_0 + PAY_2 + PAY_3+ PAY_4 +PAY_5+ PAY_6 + BILL_AMT1+ BILL_AMT2+ BILL_AMT3 + BILL_AMT4+ BILL_AMT5+ BILL_AMT6+ PAY_AMT1+ PAY_AMT2+ PAY_AMT3+PAY_AMT4+PAY_AMT5+PAY_AMT6 ,data = train, family = "binomial") 
+
+Logit_inter
+stargazer(Logit_inter)
+
+
+#### LPM #####
+LPM<- lm (default_payment_next_month ~ LIMIT_BAL + SEX + EDUCATION + MARRIAGE + AGE + PAY_0+ PAY_2 +PAY_3+ PAY_4 +PAY_5+ PAY_6 + BILL_AMT1+ BILL_AMT2+ BILL_AMT3 +BILL_AMT4+BILL_AMT5+ BILL_AMT6+PAY_AMT1+PAY_AMT2+PAY_AMT3+PAY_AMT4+PAY_AMT5+PAY_AMT6,
+          data=train, y=TRUE, x=TRUE)
+LPM
+stargazer(LPM)
+
+#In order to evaluate which model is the more accurate, we will use AIC criteria.
+
+# AIC criteria 
+
+models <- list(Logit,Probit, LPM)
+
+model.names <- c('Logit.mod', 'Probit.mod')
+
+aictab(cand.set = models, modnames = model.names)
+
+
+
+############## Generalised Additive Model #################
+# We suspect the presence of non-linearities between our dependent and explanatory variables 
+# In order to study this question we implement a GAM
+
+# GAM 
+gam.mod = gam(default_payment_next_month~ s(LIMIT_BAL) + SEX + EDUCATION + MARRIAGE + s(AGE) + PAY_0 + PAY_2 + PAY_3 + PAY_4 + PAY_5 + PAY_6 + s(BILL_AMT1) + s(BILL_AMT2) + s(BILL_AMT3) + s(BILL_AMT4) + s(BILL_AMT5) + s(BILL_AMT6) + s(PAY_AMT1) + s(PAY_AMT2) + s(PAY_AMT3) + s(PAY_AMT4) +s(PAY_AMT5)+s(PAY_AMT6),  data=train,
+              family="binomial" )
+gam.mod
+
+summary(gam.mod)
+
+
+plot_smooths(model=gam.mod, series = AGE)
+
+
+
+############### Machine Learning Techniques #########
+
+# Due to the presence of non-linearties we decide to implement machine learning techniques
+# Since theses methods perform very well to capture high non-linearties and interaction effects.
+
+
+#
+
+###### Computation of the correlation matrix
+credit_cor <- cor(no_outliers)
+credit.cor=cor(no_outliers)
+
+###### Computation of the variance-covariance matrix
+credit_cov <- cov(no_outliers)
+credit.cov=cov(no_outliers)
+
+##### Interpretations
+# As we can see we have strong correlation between some variables, therefore our estimates could be bias.
+# In order to choose relevant explanatory variables, we will use the method of principal component analysis
+
+
+###### Principal Component Analysis on our databse
+no_outliers.pca <- prcomp(no_outliers[,c(1:24)], center = TRUE,scale. = TRUE)
+
+# View of the Principal Component Analysis Table
+summary(no_outliers.pca)
+
+
+##### Principal Component Analysis on Correlation Matrix
+
+# We first looked for the contribution of PC on the variance
+
+# We now looking for the contribution of each variable in the PCAs
+
+prcomp(no_outliers)
+eigen(cov(no_outliers))
+
+
+##### Graphic Analysis
+
+#Histogram : Percentage of explained variances
+
+if(!require(devtools)) install.packages("devtools")
+devtools::install_github("kassambara/factoextra")
+library("factoextra")
+install.packages("devtools")
+fviz_screeplot(no_outliers.pca)
+library("factoextra")
+install.packages("factoextra")
+
+
+yes
+
+
+
+fviz_screeplot(no_outliers.pca)
+get_eig(no_outliers)
+library("factoextra")
+library("ggplot2")
+install.packages("ggplot2")
+get_eig(no_outliers)
+d<-no_outliers
+get_eig(d)
+fviz_eig(d, choice = c("variance", "eigenvalue"), 
+         geom = c("bar", "line"), barfill = "steelblue",
+         barcolor = "steelblue", linecolor = "black", 
+         ncp = 5, addlabels = FALSE,no)
+
+
+# PCA Circle
+
+get_eig(no_outliers.pca)
+fviz_eig(no_outliers.pca, addlabels = TRUE, ylim = c(0, 85))
+
+fviz_pca_var(no_outliers.pca,
+             col.var = "contrib", 
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE     
+)
+
+
+summary(no_outliers)
+
+
+
+#In order to make our ridge, lasso and elastic net regression we will use functions from the package "glmnet"
+#To use it, we have to define a response variable which must be a vector, and the set of variable to a class of data.matrix
+
+# We first define the response variable 
+
+#On train sample
+ytrain <- train$default_payment_next_month
+
+#On test sample
+ytest <- test$default_payment_next_month
+
+# Second we define the matrix of predictor variables
+
+#On train sample
+xtrain <- (train [, c('LIMIT_BAL', 'SEX', 'EDUCATION', 'MARRIAGE', 'AGE', 'PAY_0', 'PAY_2', 'PAY_3', 'PAY_4', 'PAY_5','PAY_6', 'BILL_AMT1',  'BILL_AMT2', 'BILL_AMT3', 'BILL_AMT4', 'BILL_AMT5', 'BILL_AMT6', 'PAY_AMT1', 'PAY_AMT2', 'PAY_AMT3', 'PAY_AMT4', 'PAY_AMT5', 'PAY_AMT6')])
+
+#On test sample
+xtest <- (test[, c('LIMIT_BAL', 'SEX', 'EDUCATION', 'MARRIAGE', 'AGE', 'PAY_0', 'PAY_2', 'PAY_3', 'PAY_4', 'PAY_5','PAY_6', 'BILL_AMT1',  'BILL_AMT2', 'BILL_AMT3', 'BILL_AMT4', 'BILL_AMT5', 'BILL_AMT6', 'PAY_AMT1', 'PAY_AMT2', 'PAY_AMT3', 'PAY_AMT4', 'PAY_AMT5', 'PAY_AMT6')])
+
+
+# Logistic Ridge Regression
+
+#Fitting of logistic ridge regression model
+#We perform k-fold cross-validation, taking n = 10
+set.seed(123)
+cv_Ridge <- cv.glmnet(as.matrix(xtrain), ytrain, alpha = 0, standardize = TRUE, family="binomial", measure="mse")
+
+#View summary of model
+summary(cv_Ridge)
+
+
+#Now we will look for the optimal of lambda (penalty term)
+
+#Finding optimal lambda value that minimizes test MSE
+set.seed(123)
+lambda_min_Ridge <- cv_Ridge$lambda.min
+lambda_min_Ridge
+# The best lambda is :  0.01343463
+
+set.seed(123)
+lambda_1se_Ridge <- cv_Ridge$lambda.1se
+lambda_1se_Ridge
+# The best lambda is :  0.1040194
+
+#Plotting of test MSE by lambda value
+plot(cv_Ridge)  
+
+#Finding coefficients of best model
+#Ridge's coefficients with lambda min
+coef(cv_Ridge, lambda=lambda_min_Ridge)
+
+#Ridge's coefficients with lambda 1se
+coef(cv_Ridge, lambda=lambda_1se_Ridge)
+
+
+
+##### Logistic Lasso regression
+
+#Fitting lasso logistic regression model
+#We perform n-fold cross-validation, taking n = 10
+set.seed(123)
+cv_Lasso <- cv.glmnet(as.matrix(xtrain), ytrain, alpha = 1, standardize = TRUE,family="binomial", measure="mse")
+
+#View summary of model
+summary(cv_Lasso)
+
+
+#Now we will look for the optimal of lambda (penalty term)
+#Finding optimal lambda value that minimizes test MSE
+set.seed(123)
+lambda_min_Lasso <- cv_Lasso$lambda.min
+lambda_min_Lasso
+# The best lambda is :0.0005058051
+
+set.seed(123)
+lambda_1se_Lasso <- cv_Lasso$lambda.1se
+lambda_1se_Lasso
+
+# The best lambda is : 0.01440551
+
+#Plotting of test MSE by lambda value
+plot(cv_Lasso) 
+
+#Finding coefficients of best model
+
+#Lasso's coefficients with lambda min
+coef(cv_Lasso, lambda=lambda_min_Lasso)
+
+#Lasso's coefficients with lambda 1se
+coef(cv_Lasso, lambda=lambda_1se_Lasso)
+
+
+# Elastic Net
+enet <- glmnet(as.matrix(xtrain),as.matrix(ytrain),family="binomial",standardize=TRUE,alpha=0.8)
+plot(enet,xvar="lambda")
+LEGEND("bottomright", lwd=1, col=1:6, legend= colnames(xvar), cex=.7)
+
+set.seed(123)
+
+cv.enet <- cv.glmnet(as.matrix(xtrain),ytrain,family="binomial",type.measure="class",nfolds= 10,alpha=0.8,foldid=cv_Ridge$foldid)
+plot(cv.enet)
+LEGEND("bottomright", lwd=1, col=1:6, legend= colnames(xvar), cex=.7)
+coef(cv.enet
+     )
+
+############### Classification Methods #############
+
+#The main issues in our study is calssification problem
+# We decide to implement to classification technique 
+#In order to have a better fit of our data and better prediction of credit card default
+
+
+# CART 
+
+CART <- rpart(default_payment_next_month ~., data=train, parms=list(split=c("information","gini")),
+              cp = 0.001, minsplit=10, minbucket=2, maxdepth=20)
+
+rpart.plot(CART)
+
+CART$variable.importance
+
+
+barplot(CART$variable.importance, horiz=TRUE, col="yellow3")
+
+#Random Forest
+
+Random_Forest<- randomForest(default_payment_next_month ~ ., data = train, ntree = 500, na.action = na.omit)
+Random_Forest
+
+
+Random_Forest$importance
+varImpPlot(Random_Forest)
+
+
+# Gradient Boosting
+set.seed(123)
+Boost=gbm( default_payment_next_month ~ .,data = train, cv.folds = 10,
+                 shrinkage=0.01,n.minobsinnode = 10, n.trees = 100)
+
+Boost
+#Table and plot of Variable Importance
+summary(Boost) 
+
+######### Variable Selection Models ###########
+
+# In order to have the best specification we now look for variable selection
+# Since it could allow us to now which variable account the most for the probability of default
+
+##### Stepwise
+
+# Determine which parameters are more important using forward selection
+Backward = regsubsets(default_payment_next_month ~., data = train, method="seqrep",
+                      nvmax=length(no_outliers)-1)
+Backward.summary = summary(Backward)
+Backward.summary
+
+
+##### Backward
+# Determine which parameters are more important using forward selection
+Backward = regsubsets(default_payment_next_month ~., data = train, method="backward",
+                      nvmax=length(no_outliers)-1)
+Backward.summary = summary(Backward)
+accuracy(Backward.summary)
+
+plot(Backward.summary$bic,type='b',col="blue", pch=19, xlab = "Number of Variables",
+     ylab = "Cross-Validated Prediction Error",
+     main = "Backward Stepwise Selection using BIC")
+points(which.min(Backward.summary$bic), Backward.summary$bic[which.min(Backward.summary$bic)],
+       col="red", pch=19)
+
+
+
+GetColumn = t(Backward.summary$which)[,which.min(Backward.summary$bic)]
+GetColumn
+
+
+# Forward
+
+forward = regsubsets(default_payment_next_month ~., data = train, method="forward", 
+                     nvmax=length(no_outliers)-1)
+forward.summary = summary(forward)
+
+
+# Autometrics (GETs)
+
+gets <- getsFun(as.matrix(ytrain), as.matrix(xtrain),
+        user.estimator = list(name = "ols"),
+        gof.function = list(name = "infocrit", method = "sc"),
+        gof.method = c("min"),
+        untransformed.residuals=NULL,
+       
+       )
+
+result <- getsFun(ytrain,as.matrix(xtrain))
+result
+
+plot(result)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+###### Model Evaluation AUC Criterion
+#AUC OLS
+pred_test_OLS <- predict(OLS, test, type="response")
+
+pred_test_OLS
+
+test_prob_OLS = predict(OLS, test, type = "response")
+
+test_roc_OLS = roc(test$default_payment_next_month ~ test_prob_OLS, plot = TRUE, print.auc = TRUE)
+
+as.numeric(test_roc_OLS$auc)
+
+pred_test_OLS <- predict(OLS, test, type="response")
+
+#AUC LOGIT
+
+pred_test_Logit <- predict(Logit,test, type="response")
+
+pred_test_Logit
+
+
+test_prob_Logit = predict(Logit, test, type = "response")
+
+test_roc_Logit = roc(test$default_payment_next_month ~ test_prob_Logit, plot = TRUE, print.auc = TRUE)
+
+as.numeric(test_roc_Logit$auc)
+
+
+#AUC Probit
+
+pred_test_Probit <- predict(Probit,test, type="response")
+
+pred_test_Probit
+
+
+test_prob_Probit = predict(Probit, test, type = "response")
+
+test_roc_Probit = roc(test$default_payment_next_month ~ test_prob_Probit, plot = TRUE, print.auc = TRUE)
+
+as.numeric(test_roc_Probit$auc)
+
+
+#### AUC LPM
+
+pred_test_LPM <- predict(LPM,test, type="response")
+
+pred_test_LPM
+
+
+test_prob_LPM = predict(LPM, test, type = "response")
+
+test_roc_LPM = roc(test$default_payment_next_month ~ test_prob_LPM, plot = TRUE, print.auc = TRUE)
+
+as.numeric(test_roc_LPM$auc)
+
+
+
+
+# AUC GAM
+
+pred_test_gam <- predict(gam.mod,test, type="response")
+
+pred_test_gam
+
+
+test_prob_gam = predict(gam.mod, test, type = "response")
+
+test_roc_gam = roc(test$default_payment_next_month ~ test_prob_gam, plot = TRUE, print.auc = TRUE)
+
+as.numeric(test_roc_gam$auc)
+
+
+
+
+
+
+
+
+
+#### AUC Ridge, lambda.min
+pred_test_Ridgemin <- predict(cv_Ridge, newx=as.matrix(xtest) , type="response", lambda=lambda_min_Ridge)
+
+pred_test_Ridgemin
+
+
+test_prob_Ridgemin = predict(cv_Ridge, newx=as.matrix(xtest) , type="response", lambda=lambda_min_Ridge)
+
+test_roc_Ridgemin = roc(test$default_payment_next_month ~  as.vector(test_prob_Ridgemin), plot = TRUE, print.auc = TRUE)
+
+
+as.numeric(test_roc_Ridgemin$auc)
+
+
+#### AUC Ridge, lambda1.se
+
+
+pred_test_Ridge1.se <- predict(cv_Ridge, newx=as.matrix(xtest) , type="response", lambda=lambda_1se_Ridge)
+
+pred_test_Ridge1.se
+
+
+test_prob_Ridge1.se = predict(cv_Ridge, newx=as.matrix(xtest) , type="response", lambda=lambda_1se_Ridge)
+
+test_roc_Ridge1.se = roc(test$default_payment_next_month ~  as.vector(test_prob_Ridge1.se), plot = TRUE, print.auc = TRUE)
+
+
+as.numeric(test_roc_Ridge1.se$auc)
+
+
+
+
+
+
+
+#### AUC Lasso, lambda.min
+pred_test_Lassomin <- predict(cv_Lasso, newx=as.matrix(xtest) , type="response", lambda=lambda_min_Lasso)
+
+pred_test_Lassomin
+
+
+test_prob_Lassomin = predict(cv_Lasso, newx=as.matrix(xtest) , type="response", lambda=lambda_min_Lasso)
+
+test_roc_Lassomin = roc(test$default_payment_next_month ~  as.vector(test_prob_Lassomin), plot = TRUE, print.auc = TRUE)
+
+
+as.numeric(test_roc_Lassomin$auc)
+
+
+
+#### AUC LAsso 1SE
+
+
+pred_test_Lasso1.se <- predict(cv_Lasso, newx=as.matrix(xtest) , type="response", lambda=lambda_1se_Lasso)
+
+pred_test_Lasso1.se
+
+
+test_prob_Lasso1.se = predict(cv_Lasso, newx=as.matrix(xtest) , type="response", lambda=lambda_1se_Lasso)
+
+test_roc_Lasso1.se = roc(test$default_payment_next_month ~  as.vector(test_prob_Lasso1.se), plot = TRUE, print.auc = TRUE)
+
+as.numeric(test_roc_Lasso1.se$auc)
+
+
+
+
+
+# AUC ElasticNet
+
+pred_test_enet <- predict(cv.enet, newx=as.matrix(xtest) , type="response")
+
+pred_test_enet
+
+
+test_prob_enet = predict(cv.enet, newx=as.matrix(xtest) , type="response")
+
+
+test_roc_enet = roc(test$default_payment_next_month ~  as.vector(test_prob_enet), plot = TRUE, print.auc = TRUE)
+
+
+as.numeric(test_roc_enet$auc)
+
+
+
+# AUC CART
+pred_test_CART <- predict(CART, test, type="vector")
+
+pred_test_CART
+
+
+test_prob_CART= predict(CART, test, type = "vector")
+
+test_roc_CART = roc(test$default_payment_next_month ~ test_prob_CART, plot = TRUE, print.auc = TRUE)
+
+as.numeric(test_roc_CART$auc)
+
+
+
+# AUC Random Forest
+pred_test_Random_Forest <- predict(Random_Forest, test, type="response")
+
+pred_test_Random_Forest
+
+
+test_prob_Random_Forest= predict(Random_Forest, test, type = "response")
+
+test_roc_Random_Forest = roc(test$default_payment_next_month ~ test_prob_Random_Forest, plot = TRUE, print.auc = TRUE)
+
+as.numeric(test_roc_Random_Forest$auc)
+
+
+
+
+# AUC Gradient Boosting
+pred_test_Boost <- predict(Boost,test, type="response")
+
+pred_test_Boost
+
+
+test_prob_Boost = predict(Boost, test, type = "response")
+
+test_roc_Boost = roc(test$default_payment_next_month ~ test_prob_Boost, plot = TRUE, print.auc = TRUE)
+
+as.numeric(test_roc_Boost$auc)
+
+
+
+############### Best Model #################
+# First we decide to introduce interaction term in our best parametric model : logit
+
+EDUCc <- no_outliers$EDUCATION- mean(no_outliers$EDUCATION)
+SEXc <-no_outliers$SEX- mean(no_outliers$SEX)
+SEXxEDUC<- EDUCc*SEXc
+
+
+SEXxEDUC
+
+
+Logit_inter <- glm(default_payment_next_month ~ LIMIT_BAL + SEXxEDUC + MARRIAGE + AGE + PAY_0 + PAY_2 + PAY_3+ PAY_4 +PAY_5+ PAY_6 + BILL_AMT1+ BILL_AMT2+ BILL_AMT3 + BILL_AMT4+ BILL_AMT5+ BILL_AMT6+ PAY_AMT1+ PAY_AMT2+ PAY_AMT3+PAY_AMT4+PAY_AMT5+PAY_AMT6,
+              family = binomial, data = train )
+
+summary(Logit_inter)
+stargazer(Logit_inter)
+
+
+
+# Then, we choose to reestimate our best models : Logit, GAM, Elastic Net, CART, Random Forest and Gradient Boosting
+#Using these variables: marriage, age, pay0, pay2, pay3, pay5, billamt1, payamt1, limitbal
+
+
+# First of all, for commodities reasons we create a new data base only for this part.
+
+default_of_credit_card_clients_copie <- read_excel("Desktop/default of credit card clients copie.xls")
+View(default_of_credit_card_clients_copie)
+
+##### Interpretation
+# As we can see we have lot of outliers, in particular for the following variables :
+# LIMT_BAL
+# BILL-AMT1 
+# PAY_AMT1
+# However, it is not necessary to remove all outliers, therefore we will look for which outliers we have to remove
+
+
+# We create a boxplot of the data set in order to show outliers as two distinct points 
+boxplot(default_of_credit_card_clients_copie)$out
+
+# Find outliers
+
+# Variable LIMIT_BAL
+
+# We look for Q1, Q3, and interquartile range for values of the variable LIMIT_BAL
+Q1_LIMIT_BAL <- quantile(default_of_credit_card_clients_copie$LIMIT_BAL, 0.25) #Quantile 1
+Q3_LIMIT_BAL <- quantile(default_of_credit_card_clients_copie$LIMIT_BAL, 0.75) #Quantile 3
+IQR_LIMIT_BAL <- IQR(default_of_credit_card_clients_copie$LIMIT_BAL) #Interquantile
+
+# In the following, we will process in the same way for numeric variables only
+# Because remove outliers for dummies variables do not make sens 
+
+# Variable BILL_AMT1
+Q1_BILL_AMT1 <- quantile(default_of_credit_card_clients_copie$BILL_AMT1, 0.25) #Quantile 1
+Q3_BILL_AMT1 <- quantile(default_of_credit_card_clients_copie$BILL_AMT1, 0.75) #Quantile 3
+IQR_BILL_AMT1 <- IQR(default_of_credit_card_clients_copie$BILL_AMT1) #Interquantile
+
+
+
+#Variable PAY_AMT1
+Q1_PAY_AMT1 <- quantile(default_of_credit_card_clients_copie$PAY_AMT1, 0.25) #Quantile 1
+Q3_PAY_AMT1 <- quantile(default_of_credit_card_clients_copie$PAY_AMT1, 0.75) #Quantile 3
+IQR_PAY_AMT1 <- IQR(default_of_credit_card_clients_copie$PAY_AMT1) #Interquantile
+
+
+
+
+#Our database without outliers
+no_outliers_copie <- subset(default_of_credit_card_clients_copie, 
+                            default_of_credit_card_clients_copie$LIMIT_BAL> (Q1_LIMIT_BAL - 1.5*IQR_LIMIT_BAL) & default_of_credit_card_clients_copie$LIMIT_BAL< (Q3_LIMIT_BAL + 1.5*IQR_LIMIT_BAL),
+                      
+                      default_of_credit_card_clients_copie$BILL_AMT1> (Q1_BILL_AMT1 - 1.5*IQR_BILL_AMT1) & default_of_credit_card_clients_copie$BILL_AMT1< (Q3_BILL_AMT1 + 1.5*IQR_BILL_AMT1),
+                      
+                      default_of_credit_card_clients_copie$PAY_AMT1> (Q1_PAY_AMT1 - 1.5*IQR_PAY_AMT1) & default_of_credit_card_clients_copie$PAY_AMT1< (Q3_PAY_AMT1 + 1.5*IQR_PAY_AMT1),
+                      
+                      select=c(LIMIT_BAL  , MARRIAGE , AGE , PAY_0 , PAY_2 , PAY_3 , PAY_5 , BILL_AMT1, PAY_AMT1, default_payment_next_month))
+
+
+
+# Train and Test Sample
+
+# We define a train and a test sample in order to have an accurate measure of the prediction of our models
+
+# We split our observations by using the following ratio :
+#70% for train sample 
+# 30% for test sample 
+no_outliers_copie=as.data.frame(no_outliers_copie)
+set.seed(123)
+no_outliers_copie_split = sample.split(no_outliers_copie, SplitRatio = 0.7)
+
+#subsetting into Train data
+best_train =subset(no_outliers_copie, no_outliers_copie_split==TRUE)
+
+#subsetting into Test data
+best_test =subset(no_outliers_copie, no_outliers_copie_split==FALSE)
+
+
+#Logit regression best
+
+Logit_best <-glm(default_payment_next_month ~ LIMIT_BAL  + MARRIAGE + AGE + PAY_0 + PAY_2 + PAY_3 +PAY_5 + BILL_AMT1+ PAY_AMT1 , data = best_train, family = "binomial") 
+
+Logit_best
+
+# AUC Logit Best 
+pred_test_Logit_best <- predict(Logit_best, best_test, type="response")
+
+pred_test_Logit_best
+
+
+test_prob_Logit_best = predict(Logit_best, best_test, type = "response")
+
+test_roc_Logit_best = roc(best_test$default_payment_next_month ~ test_prob_Logit_best, plot = TRUE, print.auc = TRUE)
+
+
+as.numeric(test_roc_Logit_best$auc)
+
+
+# GAM Best
+gam.mod_best = gam(default_payment_next_month~ s(LIMIT_BAL)   + MARRIAGE + s(AGE) + PAY_0 + PAY_2 + PAY_3 +PAY_5 + s(BILL_AMT1)+ s(PAY_AMT1) ,  data=best_train,
+              family="binomial" )
+
+
+# AUC GAM best
+
+pred_test_gam_best <- predict(gam.mod_best,best_test, type="response")
+
+pred_test_gam_best
+
+
+test_prob_gam_best = predict(gam.mod_best, best_test, type = "response")
+
+test_roc_gam_best = roc(best_test$default_payment_next_month ~ test_prob_gam_best, plot = TRUE, print.auc = TRUE)
+
+as.numeric(test_roc_gam_best$auc)
+
+
+# Elastic Net Best 
+
+# We first define the response variable 
+
+#On train sample
+ytrain_best <- best_train$default_payment_next_month
+
+#On test sample
+ytest_best <- best_test$default_payment_next_month
+
+# Second we define the matrix of predictor variables
+
+#On train sample
+xtrain_best <- (best_train [, c( 'LIMIT_BAL'  , 'MARRIAGE' , 'AGE' , 'PAY_0' , 'PAY_2' , 'PAY_3' ,'PAY_5'  ,'BILL_AMT1' , 'PAY_AMT1')])
+
+#On test sample
+xtest_best <- (best_test[, c("LIMIT_BAL"  , "MARRIAGE" , "AGE" , "PAY_0" , "PAY_2" , "PAY_3" , "PAY_5" , "BILL_AMT1" , "PAY_AMT1")])
+
+
+enet_best <- glmnet(as.matrix(xtrain_best),as.matrix(ytrain_best),family="binomial",standardize=TRUE,alpha=0.8)
+plot(enet,xvar="lambda")
+LEGEND("bottomright", lwd=1, col=1:6, legend= colnames(xvar), cex=.7)
+
+set.seed(123)
+
+cv.enet_best <- cv.glmnet(as.matrix(xtrain_best),as.matrix(ytrain_best),family="binomial",type.measure="class",nfolds= 10,alpha=0.8,foldid=cv_Ridge$foldid)
+plot(cv.enet)
+LEGEND("bottomright", lwd=1, col=1:6, legend= colnames(xvar), cex=.7)
+
+
+
+# AUC ElasticNet
+
+pred_test_enet_best <- predict(cv.enet_best, newx=as.matrix(xtest_best) , type="response")
+
+pred_test_enet_best
+
+
+test_prob_enet_best = predict(cv.enet_best, newx=as.matrix(xtest_best) , type="response")
+
+
+test_roc_enet_best = roc(best_test$default_payment_next_month ~  as.vector(test_prob_enet_best), plot = TRUE, print.auc = TRUE)
+
+
+as.numeric(test_roc_enet_best$auc)
+
+# CART Best
+
+CART_best <- rpart(default_payment_next_month ~., data=best_train, parms=list(split=c("information","gini")),
+              cp = 0.001, minsplit=10, minbucket=2, maxdepth=20)
+
+rpart.plot(CART_best)
+
+CART_best$variable.importance
+
+
+barplot(CART_best$variable.importance, horiz=TRUE, col="yellow3")
+
+
+# AUC CART Best
+
+pred_test_CART_best <- predict(CART_best, best_test, type="vector")
+
+pred_test_CART_best
+
+
+test_prob_CART_best= predict(CART_best, best_test, type = "vector")
+
+test_roc_CART_best = roc(best_test$default_payment_next_month ~ test_prob_CART_best, plot = TRUE, print.auc = TRUE)
+
+as.numeric(test_roc_CART_best$auc)
+
+
+
+# Random Forest Best
+
+Random_Forest_best <- randomForest(default_payment_next_month ~ ., data = best_train, ntree = 500, na.action = na.omit)
+Random_Forest_best
+
+
+Random_Forest_best$importance
+varImpPlot(Random_Forest_best)
+
+
+
+# AUC Random Forest Best
+pred_test_Random_Forest_best <- predict(Random_Forest_best, best_test, type="response")
+
+pred_test_Random_Forest_best
+
+
+test_prob_Random_Forest_best = predict(Random_Forest_best, best_test, type = "response")
+
+test_roc_Random_Forest_best = roc(best_test$default_payment_next_month ~ test_prob_Random_Forest_best, plot = TRUE, print.auc = TRUE)
+
+as.numeric(test_roc_Random_Forest_best$auc)
+
+
+
+# Gradient Boosting Best
+
+set.seed(123)
+Boost_best=gbm( default_payment_next_month ~ .,data = best_train, cv.folds = 10,
+           shrinkage=0.01,n.minobsinnode = 10, n.trees = 100)
+
+Boost_best
+
+#Table and plot of Variable Importance
+summary(Boost_best) 
+
+
+
+# AUC Gradient Boosting best
+pred_test_Boost_best <- predict(Boost_best, best_test, type="response")
+
+pred_test_Boost_best
+
+
+test_prob_Boost_best = predict(Boost_best, best_test, type = "response")
+
+test_roc_Boost_best = roc(best_test$default_payment_next_month ~ test_prob_Boost_best, plot = TRUE, print.auc = TRUE)
+
+as.numeric(test_roc_Boost_best$auc)
+
